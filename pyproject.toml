@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdfcraft"
+dynamic = ["version"]
+description = "HTML to PDF, and PDF to structured JSON, in one call. The official PDFCraft SDK."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "PDFCraft" }]
+# Zero runtime dependencies, on purpose: the whole client is urllib.request
+# plus a retry loop. Dragging requests and its transitive tree into a
+# customer's lockfile to save forty lines is a bad trade, especially for
+# anyone installing into a Lambda or a slim container.
+dependencies = []
+keywords = [
+  "pdf", "pdf-api", "html-to-pdf", "html-to-pdf-api", "url-to-pdf",
+  "pdf-generation", "headless-chrome", "chromium", "invoice",
+  "pdf-extraction", "pdf-to-json", "extract-tables-from-pdf",
+  "pdf-table-extraction", "pdf-accessibility",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Printing",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://pdfcraft.dev"
+Documentation = "https://pdfcraft.dev/sdk/python/"
+Source = "https://github.com/igaurav-dev/pdfcraft-python"
+Issues = "https://github.com/igaurav-dev/pdfcraft-python/issues"
+
+[tool.hatch.version]
+path = "src/pdfcraft/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdfcraft"]
+
+[tool.pytest.ini_options]
+# src-layout means the package is not importable from the repo root, so a bare
+# `pytest` fails with ModuleNotFoundError on a fresh clone. Setting pythonpath
+# here rather than expecting everyone to remember PYTHONPATH=src — including
+# scripts/publish.sh, which got this wrong once.
+pythonpath = ["src"]
+testpaths = ["tests"]
