@@ -16,7 +16,18 @@ requires = ["hatchling>=1.24,<1.28"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pdfcraft"
+# The DISTRIBUTION name, which is not the import name.
+#
+# `pdfcraft` is unavailable: PyPI compares names with every non-alphanumeric
+# character stripped, so the existing `pdf-craft` (a scanned-book to Markdown
+# converter, unrelated to this) and `pdfcraft` both reduce to `pdfcraft` and the
+# upload is refused as "too similar to an existing project" — a bare 400 with no
+# reason in the body.
+#
+# The package still imports as `pdfcraft`; only `pip install` differs, the same
+# split as python-dateutil/dateutil. `pdfcraft-dev` matches the npm scope
+# (@pdfcraft-dev/pdf) so the two registries tell one story.
+name = "pdfcraft-dev"
 dynamic = ["version"]
 description = "HTML to PDF, and PDF to structured JSON, in one call. The official PDFCraft SDK."
 readme = "README.md"

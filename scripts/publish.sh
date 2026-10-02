@@ -37,7 +37,7 @@ skip() { printf '  \033[33mskip\033[0m %s\n' "$1"; }
 die()  { printf '  \033[31mfail\033[0m %s\n' "$1" >&2; exit 1; }
 
 PY="${PYTHON:-python3}"
-NAME=pdfcraft
+NAME=pdfcraft-dev
 VERSION="$("$PY" - <<'EOF'
 import re, pathlib
 text = pathlib.Path("src/pdfcraft/_version.py").read_text()
@@ -87,6 +87,47 @@ if command -v curl >/dev/null 2>&1; then
     000) skip 'no network — could not check PyPI' ;;
     *)   skip "PyPI answered HTTP $CODE, which proves nothing — check by hand" ;;
   esac
+
+  # A 404 above means only that THIS name+version is unpublished. It does NOT
+  # mean the name can be registered.
+  #
+  # PyPI refuses a name that collides with an existing project once every
+  # non-alphanumeric character is stripped: `pdf-craft` already owning that
+  # shape is what blocks `pdfcraft`. The refusal is a bare 400 with no reason
+  # in the body, arriving AFTER the file uploads in full.
+  #
+  # There is no endpoint that answers "is this name free" — pypi.org/simple/
+  # normalises per PEP 503, which keeps the hyphen, so /simple/pdfcraft/ is a
+  # 404 while pdf-craft exists. Measured, not assumed.
+  #
+  # So this is best-effort: try the name with one separator inserted at each
+  # position, which catches the overwhelmingly common collision. It warns
+  # rather than fails, because it cannot prove the negative — step 9 below
+  # passes --verbose so PyPI's own reason is visible if it still refuses.
+  if [ ${#NAME} -le 24 ]; then
+    BARE="$("$PY" -c "import re,sys; print(re.sub(r'[^a-z0-9]', '', sys.argv[1].lower()))" "$NAME")"
+    FOUND=''
+    for VARIANT in $("$PY" -c "
+import sys
+b = sys.argv[1]
+print(' '.join(f'{b[:i]}-{b[i:]}' for i in range(1, len(b))))
+" "$BARE"); do
+      [ "$VARIANT" = "$NAME" ] && continue
+      if [ "$(curl -s -o /dev/null -w '%{http_code}' -L --max-time 8 \
+           "https://pypi.org/pypi/${VARIANT}/json" || echo 000)" = "200" ]; then
+        FOUND="$VARIANT"
+        break
+      fi
+    done
+    if [ -n "$FOUND" ]; then
+      printf '  \033[33mwarn\033[0m "%s" already exists on PyPI and reduces to the same\n' "$FOUND"
+      printf '       name as "%s" once punctuation is stripped.\n' "$NAME"
+      printf '       If the upload returns 400, that is why — pick a name that does not\n'
+      printf '       reduce to "%s".\n' "$BARE"
+    else
+      ok "no obvious name collision"
+    fi
+  fi
 else
   skip 'curl not installed'
 fi
@@ -203,8 +244,19 @@ ok 'wheel contains the package and py.typed, and nothing it should not'
 step '7 · Install it as a stranger would'
 "$PY" -m venv "$WORK/venv" >/dev/null
 "$WORK/venv/bin/pip" install --quiet "$WHEEL" >/dev/null 2>&1 || die 'install from the wheel failed'
-DEPS="$("$WORK/venv/bin/pip" list --format=freeze 2>/dev/null | grep -vcE '^(pip|setuptools|wheel|pdfcraft)==' || true)"
-[ "${DEPS:-0}" -eq 0 ] || die "expected zero runtime dependencies, found $DEPS"
+# The package excludes ITSELF by $NAME rather than by a literal. pip reports a
+# name with either separator depending on version, so both spellings are
+# allowed — a hardcoded "pdfcraft" counted the renamed package as its own
+# dependency the moment the distribution became pdfcraft-dev.
+SELF="$(printf '%s' "$NAME" | tr 'A-Z' 'a-z' | sed 's/[-_.]/[-_.]/g')"
+DEPS="$("$WORK/venv/bin/pip" list --format=freeze 2>/dev/null \
+  | grep -vciE "^(pip|setuptools|wheel|${SELF})==" || true)"
+if [ "${DEPS:-0}" -ne 0 ]; then
+  printf '  \033[31mfail\033[0m expected zero runtime dependencies, found %s:\n\n' "$DEPS" >&2
+  "$WORK/venv/bin/pip" list --format=freeze 2>/dev/null \
+    | grep -viE "^(pip|setuptools|wheel|${SELF})==" | sed 's/^/    /' >&2
+  exit 1
+fi
 ok 'installs with zero dependencies'
 
 "$WORK/venv/bin/python" - <<'EOF' || die 'import failed'
@@ -243,7 +295,13 @@ if [ "$ASSUME_YES" -eq 0 ]; then
     *) printf '  nothing uploaded.\n'; exit 0 ;;
   esac
 fi
-"$PY" -m twine upload dist/*
+# --verbose, always. A plain `twine upload` reports a rejection as
+# "HTTPError: 400 Bad Request" with PyPI's actual reason discarded — and PyPI
+# puts the useful sentence ("too similar to an existing project", "invalid
+# metadata", whichever) in the response body. Three uploads were spent guessing
+# at a 400 that said so all along. The extra output is worth it on the one
+# command in this script that cannot be undone.
+"$PY" -m twine upload --verbose dist/*
 ok "published — https://pypi.org/project/$NAME/$VERSION/"
 printf '\n  tag the commit so this build is reproducible:\n    git tag -a v%s -m "%s %s" && git push origin v%s\n' \
   "$VERSION" "$NAME" "$VERSION" "$VERSION"

@@ -7,8 +7,13 @@ The official Python client for [PDFCraft](https://pdfcraft.dev).
 into a Lambda or a slim container without dragging a transitive tree behind it.
 
 ```bash
-pip install pdfcraft
+pip install pdfcraft-dev
 ```
+
+Installs as `pdfcraft-dev`, imports as `pdfcraft` — the same split as
+`python-dateutil`/`dateutil`. The plain name was taken on PyPI by an unrelated
+project, and the npm package is `@pdfcraft-dev/pdf`, so the two registries at
+least agree with each other.
 
 ## Render
 
