@@ -92,14 +92,44 @@ else
 fi
 
 step '4 · Tests'
-"$PY" -m pytest tests/ -q >/dev/null 2>&1 || die 'tests failed — run them by hand to see why'
-ok 'tests pass'
+# Output is captured and REPLAYED on failure rather than discarded.
+#
+# This used to end in "run them by hand to see why", which is a check that
+# tells you something is wrong and then hides the one thing you need. A release
+# script that makes you re-run the failing command to learn anything has not
+# saved you a step, it has cost you one — and it cost exactly that, once.
+#
+# pytest is also checked for separately, because "not installed" and "15 tests
+# failed" are different problems and the exit code alone does not say which.
+if ! "$PY" -m pytest --version >/dev/null 2>&1; then
+  die "pytest is not installed for $("$PY" -c 'import sys; print(sys.executable)').
+       Install it:  $PY -m pip install pytest
+       Or point this script at the interpreter that has it:  PYTHON=python3.12 $0"
+fi
+if ! "$PY" -m pytest tests/ -q >"$WORK/pytest.log" 2>&1; then
+  printf '  \033[31mfail\033[0m tests failed:\n\n' >&2
+  sed 's/^/    /' "$WORK/pytest.log" >&2
+  printf '\n       re-run with:  %s -m pytest tests/ -q\n' "$PY" >&2
+  exit 1
+fi
+ok "tests pass ($("$PY" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))'))"
 
 step '5 · Build from clean'
 rm -rf dist build ./*.egg-info src/*.egg-info
-"$PY" -m pip install --quiet --upgrade build twine >/dev/null 2>&1 \
-  || die 'could not install build/twine'
-"$PY" -m build >/dev/null 2>&1 || die 'build failed — run "python3 -m build" to see why'
+if ! "$PY" -m pip install --quiet --upgrade build twine >"$WORK/pip.log" 2>&1; then
+  printf '  \033[31mfail\033[0m could not install build/twine:\n\n' >&2
+  sed 's/^/    /' "$WORK/pip.log" >&2
+  exit 1
+fi
+if ! "$PY" -m build >"$WORK/build.log" 2>&1; then
+  printf '  \033[31mfail\033[0m build failed:\n\n' >&2
+  # The last 40 lines, not a path: $WORK is removed by the EXIT trap, so
+  # pointing at a log file there would be a path that no longer exists by the
+  # time anyone reads the message.
+  tail -40 "$WORK/build.log" | sed 's/^/    /' >&2
+  printf '\n       re-run with:  %s -m build\n' "$PY" >&2
+  exit 1
+fi
 WHEEL="$(ls dist/*.whl 2>/dev/null | head -1)"
 SDIST="$(ls dist/*.tar.gz 2>/dev/null | head -1)"
 [ -n "$WHEEL" ] && [ -n "$SDIST" ] || die 'build produced no wheel and sdist'
