@@ -1,5 +1,18 @@
 [build-system]
-requires = ["hatchling>=1.24"]
+# Upper bound, and it is load-bearing rather than cautious.
+#
+# hatchling 1.28+ emits `Metadata-Version: 2.5`. PyPI's upload endpoint
+# validates that field against a list it knows and currently stops at 2.4, so a
+# 2.5 wheel is rejected with a bare `400 Bad Request` — after uploading to 100%,
+# with no reason in the body. `twine check` does not catch it either, because it
+# only renders the README.
+#
+# Measured, not guessed:  1.26.3 -> 2.3    1.27.0 -> 2.4    1.32.4 -> 2.5
+#
+# Raise this bound when PyPI announces 2.5 support, not before. scripts/publish.sh
+# now asserts the built metadata version, so the pin and the check have to be
+# wrong together for this to recur.
+requires = ["hatchling>=1.24,<1.28"]
 build-backend = "hatchling.build"
 
 [project]

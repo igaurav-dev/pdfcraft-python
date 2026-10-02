@@ -158,6 +158,39 @@ step '6 · Metadata as PyPI will render it'
 "$PY" -m twine check dist/* >/dev/null || die 'twine check failed — the PyPI page would render broken'
 ok 'long_description renders'
 
+# The check twine does NOT do, and the one that cost a failed 1.4.0 upload.
+#
+# PyPI validates Metadata-Version against a list it knows, currently topping out
+# at 2.4. hatchling 1.28+ emits 2.5. The result is a bare `400 Bad Request`
+# AFTER the file transfers to 100%, with no reason in the body — the least
+# diagnosable failure in the whole pipeline, and twine check passes happily
+# because it only renders the README.
+#
+# pyproject pins hatchling below 1.28. This asserts the outcome rather than
+# trusting the pin, so the two have to be wrong together.
+MAX_METADATA_VERSION=2.4
+META_VERSION="$("$PY" - "$WHEEL" <<'EOF'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+name = next(n for n in z.namelist() if n.endswith(".dist-info/METADATA"))
+for line in z.read(name).decode("utf-8", "replace").splitlines():
+    if line.lower().startswith("metadata-version:"):
+        print(line.split(":", 1)[1].strip())
+        break
+EOF
+)"
+if [ "$("$PY" -c "import sys; print(1 if tuple(map(int,'$META_VERSION'.split('.'))) > tuple(map(int,'$MAX_METADATA_VERSION'.split('.'))) else 0)")" = "1" ]; then
+  die "the wheel declares Metadata-Version $META_VERSION, and PyPI accepts at most $MAX_METADATA_VERSION.
+       Uploading it returns a bare 400 Bad Request with no reason, after the
+       file has transferred in full.
+
+       Your build backend is too new. pyproject pins hatchling<1.28 for exactly
+       this; if that pin was raised or the isolated build ignored it, put it back:
+         requires = [\"hatchling>=1.24,<1.28\"]
+       then delete dist/ and run this again."
+fi
+ok "Metadata-Version $META_VERSION (PyPI accepts up to $MAX_METADATA_VERSION)"
+
 CONTENTS="$("$PY" -c "import zipfile,sys; print('\n'.join(zipfile.ZipFile(sys.argv[1]).namelist()))" "$WHEEL")"
 for required in pdfcraft/__init__.py pdfcraft/py.typed; do
   case "$CONTENTS" in *"$required"*) ;; *) die "$required is missing from the wheel" ;; esac
