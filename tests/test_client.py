@@ -15,7 +15,13 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 from pdfcraft import PDFCraft, PDFCraftError
-from pdfcraft._contract import CONTRACT_HASH, ERROR_CODES
+from pdfcraft._contract import (
+    A11Y_SEVERITIES,
+    CONTRACT_HASH,
+    ERROR_CODES,
+    FINDING_LAYERS,
+    SCAN_STATUSES,
+)
 
 STATE: dict[str, object] = {}
 
@@ -182,3 +188,42 @@ def test_generated_contract_is_present_and_plausible() -> None:
     assert len(CONTRACT_HASH) == 64
     assert "quota_exceeded" in ERROR_CODES
     assert "render_timeout" in ERROR_CODES
+
+
+def test_scan_requires_exactly_one_source(server: str) -> None:
+    # Caught here rather than sent. The API would reject it too, but a round
+    # trip to be told you contradicted yourself is a round trip wasted — and
+    # the error names the argument the caller typed, not a JSON path.
+    with pytest.raises(PDFCraftError) as caught:
+        client(server).scan(domain="example.gov", sitemap="https://example.gov/sitemap.xml")
+    assert caught.value.code == "invalid_request"
+    with pytest.raises(PDFCraftError):
+        client(server).scan()
+
+
+def test_scan_posts_the_contract_shape(server: str) -> None:
+    STATE["script"] = [(202, b'{"id":"scn_1","status":"queued","discovered":null}', {})]
+    accepted = client(server).scan(domain="example.gov", max_documents=500)
+    assert accepted["status"] == "queued"
+    request = STATE["requests"][0]  # type: ignore[index]
+    assert request["path"] == "/v1/a11y/scan"
+    # source and options are separate objects; flattening them is the shape the
+    # API rejects, and it is the mistake a kwargs-only signature invites.
+    assert request["body"] == {
+        "source": {"domain": "example.gov"},
+        "options": {"max_documents": 500},
+    }
+
+
+def test_scan_ids_go_to_the_scan_endpoint(server: str) -> None:
+    STATE["script"] = [(200, b'{"id":"scn_1","status":"succeeded","checked":2}', {})]
+    client(server).get_scan("scn_01ABC")
+    assert STATE["requests"][0]["path"] == "/v1/a11y/scans/scn_01ABC"  # type: ignore[index]
+
+
+def test_accessibility_enums_are_generated_not_typed() -> None:
+    # A client comparing a severity against a hand-typed string is a client
+    # that silently stops matching the day a value is added.
+    assert A11Y_SEVERITIES[0] == "blocker"
+    assert "succeeded" in SCAN_STATUSES
+    assert set(FINDING_LAYERS) == {"machine", "geometric"}

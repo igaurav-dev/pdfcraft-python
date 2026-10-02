@@ -10,7 +10,13 @@ Zero dependencies. Every failure raises `PDFCraftError`; branch on `.code`.
 """
 
 from ._client import DEFAULT_BASE_URL, PDFCraft
-from ._contract import ERROR_CODES, PAGE_FORMATS
+from ._contract import (
+    A11Y_SEVERITIES,
+    ERROR_CODES,
+    FINDING_LAYERS,
+    PAGE_FORMATS,
+    SCAN_STATUSES,
+)
 from ._errors import PDFCraftError
 from ._version import __version__
 
@@ -19,6 +25,9 @@ __all__ = [
     "PDFCraftError",
     "ERROR_CODES",
     "PAGE_FORMATS",
+    "A11Y_SEVERITIES",
+    "SCAN_STATUSES",
+    "FINDING_LAYERS",
     "DEFAULT_BASE_URL",
     "__version__",
 ]

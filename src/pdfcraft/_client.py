@@ -20,7 +20,7 @@ import random
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ._errors import PDFCraftError, to_error
 from ._version import __version__
@@ -140,6 +140,56 @@ class PDFCraft:
             idempotency_key=idempotency_key,
             **input,
         )
+
+    # ── accessibility ─────────────────────────────────────────────────────
+
+    def scan(
+        self,
+        *,
+        domain: str | None = None,
+        sitemap: str | None = None,
+        urls: Sequence[str] | None = None,
+        **options: Any,
+    ) -> JsonDict:
+        """Start an accessibility scan. Returns at once with an id to poll.
+
+        Exactly one source. A scan of a thousand documents at one request per
+        second per host has a floor measured in minutes, so there is nothing to
+        return but an id and somewhere to look.
+
+            scan = client.scan(domain="example.gov", max_documents=500)
+            while scan["status"] not in ("succeeded", "failed"):
+                time.sleep(10)
+                scan = client.get_scan(scan["id"])
+
+        ``max_documents`` is clamped to your plan rather than refused, and the
+        gap between what was found and what was checked is reported back as
+        ``discovered`` minus ``checked``.
+        """
+        source = {
+            key: value
+            for key, value in (("domain", domain), ("sitemap", sitemap), ("urls", list(urls) if urls else None))
+            if value is not None
+        }
+        if len(source) != 1:
+            raise PDFCraftError(
+                "invalid_request",
+                "exactly one of domain, sitemap or urls is required",
+                400,
+            )
+        body: JsonDict = {"source": source}
+        if options:
+            body["options"] = dict(options)
+        return _json(self._request("POST", "/v1/a11y/scan", body))
+
+    def get_scan(self, scan_id: str) -> JsonDict:
+        """Poll one scan.
+
+        Returns progress while it runs and the full result — every document,
+        ranked, with findings and cost — once it succeeds. ``report_url`` is a
+        share token: anyone with it can read the report, no account needed.
+        """
+        return _json(self._request("GET", f"/v1/a11y/scans/{_quote(scan_id)}"))
 
     # ── transport ─────────────────────────────────────────────────────────
 

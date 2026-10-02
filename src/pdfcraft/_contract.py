@@ -47,3 +47,26 @@ EXTRACT_OUTPUT_MODES: tuple[str, ...] = (
 
 MAX_TIMEOUT_MS = 120000
 DEFAULT_TIMEOUT_MS = 30000
+
+#: Accessibility severity, worst first. Ordered, not merely enumerated.
+A11Y_SEVERITIES: tuple[str, ...] = (
+    "blocker",
+    "major",
+    "minor",
+    "pass",
+)
+
+#: Scan lifecycle. Poll until the status is terminal.
+SCAN_STATUSES: tuple[str, ...] = (
+    "queued",
+    "crawling",
+    "checking",
+    "succeeded",
+    "failed",
+)
+
+#: Which layer found a finding. "geometric" is the half a conformance validator cannot do.
+FINDING_LAYERS: tuple[str, ...] = (
+    "machine",
+    "geometric",
+)

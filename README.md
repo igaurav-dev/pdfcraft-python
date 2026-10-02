@@ -1,7 +1,7 @@
 # PDFCraft for Python
 
-HTML to PDF, and PDF to structured JSON, in one call. The official Python client for
-[PDFCraft](https://pdfcraft.dev).
+HTML to PDF, PDF to structured JSON, and accessibility triage for a whole document estate.
+The official Python client for [PDFCraft](https://pdfcraft.dev).
 
 **Zero dependencies.** The whole client is `urllib.request` plus a retry loop, so it installs
 into a Lambda or a slim container without dragging a transitive tree behind it.
@@ -82,6 +82,52 @@ status = client.get_render(job["id"])
 
 `get_extraction` polls extractions. An extraction id is not a render id — each endpoint 404s
 on the other's ids, deliberately.
+
+## Accessibility
+
+Point it at a domain and it finds every PDF, checks each against PDF/UA and WCAG 2.1 AA, and
+returns a report ranked by severity weighted by reach, with a remediation cost range.
+
+```python
+import time
+
+scan = client.scan(domain="example.gov", max_documents=500)
+while scan["status"] not in ("succeeded", "failed"):
+    time.sleep(10)
+    scan = client.get_scan(scan["id"])
+
+for doc in scan["documents"][:10]:          # already ranked — this is the fix list
+    print(doc["severity"], doc["score"], doc["url"])
+    print(f"  ${doc['cost_low_usd']:.0f}-${doc['cost_high_usd']:.0f} to remediate")
+```
+
+Exactly one source: `domain=`, `sitemap=` or `urls=`. Passing none or two raises
+`PDFCraftError` before anything is sent, because a round trip to be told you contradicted
+yourself is a round trip wasted.
+
+A scan runs for minutes — one request per second per host is a rule we do not break — so it
+returns an id immediately and you poll. `max_documents` is **clamped to your plan rather than
+refused**; `discovered` minus `checked` is what was found and not looked at, which is also the
+upgrade prompt.
+
+`report_url` on a finished scan is a share token. Anyone holding it can read the full HTML
+report, and `GET /r/<token>/pdf` renders the same report to PDF through the render API. Treat
+it as a credential, not an identifier.
+
+Each finding carries `severity` (`blocker`, `major`, `minor`), the `wcag` criteria it breaks, a
+`message` written for whoever approves the budget, and `technical_detail` for whoever does the
+work. `occurrences` is volume, not severity — one check failing 1,535 times is one thing wrong,
+fixed once, so never rank on it.
+
+```python
+from pdfcraft import A11Y_SEVERITIES, FINDING_LAYERS, SCAN_STATUSES
+```
+
+Those are generated from the same contract the API validates against, so comparing against them
+beats comparing against a string you typed.
+
+Accessibility is a **separate subscription** from rendering. An account can hold either, both or
+neither, and the free tier is a real scan of 25 documents with full findings.
 
 ## Errors
 
