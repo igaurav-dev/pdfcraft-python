@@ -102,7 +102,24 @@ step '4 · Tests'
 # pytest is also checked for separately, because "not installed" and "15 tests
 # failed" are different problems and the exit code alone does not say which.
 if ! "$PY" -m pytest --version >/dev/null 2>&1; then
-  die "pytest is not installed for $("$PY" -c 'import sys; print(sys.executable)').
+  WHICH="$("$PY" -c 'import sys; print(sys.executable)')"
+  # A Homebrew or system Python on macOS and most distros is PEP 668
+  # "externally managed": pip refuses to install into it at all. Telling
+  # someone to run `pip install pytest` there is advice that cannot work, so
+  # detect it and name the venv instead — which is the right answer anyway,
+  # because step 5 needs build and twine in the same interpreter.
+  if "$PY" -c 'import sysconfig,os,sys; sys.exit(0 if os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)' 2>/dev/null; then
+    die "pytest is not installed, and $WHICH
+       is externally managed — pip will refuse to install into it.
+
+       Make a virtualenv ( .venv/ is already gitignored ):
+         python3 -m venv .venv && source .venv/bin/activate
+         pip install pytest build twine
+         $0 ${*:-}
+
+       Keep it active for the upload too; twine runs from it."
+  fi
+  die "pytest is not installed for $WHICH.
        Install it:  $PY -m pip install pytest
        Or point this script at the interpreter that has it:  PYTHON=python3.12 $0"
 fi
